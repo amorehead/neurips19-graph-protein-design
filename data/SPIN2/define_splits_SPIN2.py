@@ -1,9 +1,8 @@
-import glob, os
+import glob
 import json
 
-
 for suffix in ['sc', 'L100']:
-    results_files = glob.glob('results_'+ suffix +'/*.spin2')
+    results_files = glob.glob('results_' + suffix + '/*.spin2')
     chains_spin2 = [file.split('/')[-1][:6] for file in results_files]
 
     with open('../cath/chain_set_splits_revise.json') as f:
@@ -15,6 +14,6 @@ for suffix in ['sc', 'L100']:
         'test': sorted(list(overlap))
     }
     print(len(splits['test']), len(chains_spin2), len(splits_new['test']))
-    with open('test_split_'+ suffix +'.json', 'w') as f:
+    with open('test_split_' + suffix + '.json', 'w') as f:
         json.dump(splits_new, f)
         print(len(splits_new['test']))

@@ -1,0 +1,17 @@
+name: graph-based-protein-design
+channels:
+  - defaults
+  - anaconda
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.8
+  - pip=21.1.3
+  - scipy=1.6.2
+  - pandas=1.3.0
+  - scikit-learn=0.24.2
+  - matplotlib=3.4.2
+  # After creating initial Conda environment, uncomment and run the following if not already installed on your machine
+  #  - pytorch  # Install with 'conda install pytorch -c pytorch -c conda-forge'
+  - pip:
+      - -e .

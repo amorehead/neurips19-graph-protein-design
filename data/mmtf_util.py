@@ -1,6 +1,8 @@
-import os, time, gzip, urllib, json
+import os
+import urllib
+
 import mmtf
-from collections import defaultdict
+
 
 def download_cached(url, target_location):
     """ Download with caching """
@@ -27,7 +29,7 @@ def mmtf_fetch(pdb, cache_dir='cath/mmtf/'):
     return mmtf_record
 
 
-def mmtf_parse(pdb_id, chain, target_atoms = ['N', 'CA', 'C', 'O']):
+def mmtf_parse(pdb_id, chain, target_atoms=['N', 'CA', 'C', 'O']):
     """ Parse mmtf file to extract C-alpha coordinates """
     # MMTF traversal derived from the specification 
     # https://github.com/rcsb/mmtf/blob/master/spec.md
@@ -36,12 +38,12 @@ def mmtf_parse(pdb_id, chain, target_atoms = ['N', 'CA', 'C', 'O']):
     # Build a dictionary
     mmtf_dict = {}
     mmtf_dict['seq'] = []
-    mmtf_dict['coords'] = {code:[] for code in target_atoms}
+    mmtf_dict['coords'] = {code: [] for code in target_atoms}
 
     # Get chain of interest from Model 0
     model_ix, chain_ix, group_ix, atom_ix = 0, 0, 0, 0
     target_chain_ix, target_entity = next(
-        (i, entity) for entity in A.entity_list for i in entity['chainIndexList'] 
+        (i, entity) for entity in A.entity_list for i in entity['chainIndexList']
         if entity['type'] == 'polymer' and A.chain_name_list[i] == chain
     )
 
@@ -55,7 +57,7 @@ def mmtf_parse(pdb_id, chain, target_atoms = ['N', 'CA', 'C', 'O']):
         if chain_ix == target_chain_ix:
             mmtf_dict['seq'] = target_entity['sequence']
             coords_null = [[float('nan')] * 3] * len(mmtf_dict['seq'])
-            mmtf_dict['coords'] = {code : list(coords_null) for code in target_atoms}
+            mmtf_dict['coords'] = {code: list(coords_null) for code in target_atoms}
 
             # Traverse groups, storing data
             chain_group_count = A.groups_per_chain[chain_ix]

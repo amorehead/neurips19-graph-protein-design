@@ -1,21 +1,18 @@
 from __future__ import print_function
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import numpy as np
-import copy
-
-from matplotlib import pyplot as plt
-
 from .self_attention import gather_edges, gather_nodes, Normalize
 
+
 class PositionalEncodings(nn.Module):
-    def __init__(self, num_embeddings, period_range=[2,1000]):
+    def __init__(self, num_embeddings, period_range=[2, 1000]):
         super(PositionalEncodings, self).__init__()
         self.num_embeddings = num_embeddings
-        self.period_range = period_range 
+        self.period_range = period_range
 
     def forward(self, E_idx):
         # i-j
@@ -37,19 +34,20 @@ class PositionalEncodings(nn.Module):
         #         self.num_embeddings / 2
         #     )
         # )
-        angles = d * frequency.view((1,1,1,-1))
+        angles = d * frequency.view((1, 1, 1, -1))
         E = torch.cat((torch.cos(angles), torch.sin(angles)), -1)
         return E
 
+
 class ProteinFeatures(nn.Module):
     def __init__(self, edge_features, node_features, num_positional_embeddings=16,
-        num_rbf=16, top_k=30, features_type='full', augment_eps=0., dropout=0.1):
+                 num_rbf=16, top_k=30, features_type='full', augment_eps=0., dropout=0.1):
         """ Extract protein features """
         super(ProteinFeatures, self).__init__()
         self.edge_features = edge_features
         self.node_features = node_features
         self.top_k = top_k
-        self.augment_eps = augment_eps 
+        self.augment_eps = augment_eps
         self.num_rbf = num_rbf
         self.num_positional_embeddings = num_positional_embeddings
 
@@ -65,10 +63,10 @@ class ProteinFeatures(nn.Module):
         # Positional encoding
         self.embeddings = PositionalEncodings(num_positional_embeddings)
         self.dropout = nn.Dropout(dropout)
-        
+
         # Normalization and embedding
         node_in, edge_in = self.feature_dimensions[features_type]
-        self.node_embedding = nn.Linear(node_in,  node_features, bias=True)
+        self.node_embedding = nn.Linear(node_in, node_features, bias=True)
         self.edge_embedding = nn.Linear(edge_in, edge_features, bias=True)
         self.norm_nodes = Normalize(node_features)
         self.norm_edges = Normalize(edge_features)
@@ -76,9 +74,9 @@ class ProteinFeatures(nn.Module):
     def _dist(self, X, mask, eps=1E-6):
         """ Pairwise euclidean distances """
         # Convolutional network on NCHW
-        mask_2D = torch.unsqueeze(mask,1) * torch.unsqueeze(mask,2)
-        dX = torch.unsqueeze(X,1) - torch.unsqueeze(X,2)
-        D = mask_2D * torch.sqrt(torch.sum(dX**2, 3) + eps)
+        mask_2D = torch.unsqueeze(mask, 1) * torch.unsqueeze(mask, 2)
+        dX = torch.unsqueeze(X, 1) - torch.unsqueeze(X, 2)
+        D = mask_2D * torch.sqrt(torch.sum(dX ** 2, 3) + eps)
 
         # Identify k nearest neighbors (including self)
         D_max, _ = torch.max(D, -1, keepdim=True)
@@ -104,10 +102,10 @@ class ProteinFeatures(nn.Module):
         # Distance radial basis function
         D_min, D_max, D_count = 0., 20., self.num_rbf
         D_mu = torch.linspace(D_min, D_max, D_count)
-        D_mu = D_mu.view([1,1,1,-1])
+        D_mu = D_mu.view([1, 1, 1, -1])
         D_sigma = (D_max - D_min) / D_count
         D_expand = torch.unsqueeze(D, -1)
-        RBF = torch.exp(-((D_expand - D_mu) / D_sigma)**2)
+        RBF = torch.exp(-((D_expand - D_mu) / D_sigma) ** 2)
 
         # for i in range(D_count):
         #     fig = plt.figure(figsize=(4,4))
@@ -133,15 +131,15 @@ class ProteinFeatures(nn.Module):
         diag = torch.diagonal(R, dim1=-2, dim2=-1)
         Rxx, Ryy, Rzz = diag.unbind(-1)
         magnitudes = 0.5 * torch.sqrt(torch.abs(1 + torch.stack([
-              Rxx - Ryy - Rzz, 
-            - Rxx + Ryy - Rzz, 
+            Rxx - Ryy - Rzz,
+            - Rxx + Ryy - Rzz,
             - Rxx - Ryy + Rzz
         ], -1)))
-        _R = lambda i,j: R[:,:,:,i,j]
+        _R = lambda i, j: R[:, :, :, i, j]
         signs = torch.sign(torch.stack([
-            _R(2,1) - _R(1,2),
-            _R(0,2) - _R(2,0),
-            _R(1,0) - _R(0,1)
+            _R(2, 1) - _R(1, 2),
+            _R(0, 2) - _R(2, 0),
+            _R(1, 0) - _R(0, 1)
         ], -1))
         xyz = signs * magnitudes
         # The relu enforces a non-negative trace
@@ -181,28 +179,28 @@ class ProteinFeatures(nn.Module):
         X_atoms = dict(zip(['N', 'CA', 'C', 'O'], torch.unbind(X, 2)))
 
         # Virtual hydrogens
-        X_atoms['C_prev'] = F.pad(X_atoms['C'][:,1:,:], (0,0,0,1), 'constant', 0)
+        X_atoms['C_prev'] = F.pad(X_atoms['C'][:, 1:, :], (0, 0, 0, 1), 'constant', 0)
         X_atoms['H'] = X_atoms['N'] + F.normalize(
-             F.normalize(X_atoms['N'] - X_atoms['C_prev'], -1)
-          +  F.normalize(X_atoms['N'] - X_atoms['CA'], -1)
-        , -1)
+            F.normalize(X_atoms['N'] - X_atoms['C_prev'], -1)
+            + F.normalize(X_atoms['N'] - X_atoms['CA'], -1)
+            , -1)
 
         def _distance(X_a, X_b):
-            return torch.norm(X_a[:,None,:,:] - X_b[:,:,None,:], dim=-1)
+            return torch.norm(X_a[:, None, :, :] - X_b[:, :, None, :], dim=-1)
 
         def _inv_distance(X_a, X_b):
             return 1. / (_distance(X_a, X_b) + eps)
 
         # DSSP vacuum electrostatics model
         U = (0.084 * 332) * (
-              _inv_distance(X_atoms['O'], X_atoms['N'])
-            + _inv_distance(X_atoms['C'], X_atoms['H'])
-            - _inv_distance(X_atoms['O'], X_atoms['H'])
-            - _inv_distance(X_atoms['C'], X_atoms['N'])
+                _inv_distance(X_atoms['O'], X_atoms['N'])
+                + _inv_distance(X_atoms['C'], X_atoms['H'])
+                - _inv_distance(X_atoms['O'], X_atoms['H'])
+                - _inv_distance(X_atoms['C'], X_atoms['N'])
         )
 
         HB = (U < -0.5).type(torch.float32)
-        neighbor_HB = mask_neighbors * gather_edges(HB.unsqueeze(-1),  E_idx)
+        neighbor_HB = mask_neighbors * gather_edges(HB.unsqueeze(-1), E_idx)
         # print(HB)
         # HB = F.sigmoid(U)
         # U_np = U.cpu().data.numpy()
@@ -222,32 +220,32 @@ class ProteinFeatures(nn.Module):
         # Pair features
 
         # Shifted slices of unit vectors
-        dX = X[:,1:,:] - X[:,:-1,:]
+        dX = X[:, 1:, :] - X[:, :-1, :]
         U = F.normalize(dX, dim=-1)
-        u_2 = U[:,:-2,:]
-        u_1 = U[:,1:-1,:]
-        u_0 = U[:,2:,:]
+        u_2 = U[:, :-2, :]
+        u_1 = U[:, 1:-1, :]
+        u_0 = U[:, 2:, :]
         # Backbone normals
         n_2 = F.normalize(torch.cross(u_2, u_1), dim=-1)
         n_1 = F.normalize(torch.cross(u_1, u_0), dim=-1)
 
         # Bond angle calculation
         cosA = -(u_1 * u_0).sum(-1)
-        cosA = torch.clamp(cosA, -1+eps, 1-eps)
+        cosA = torch.clamp(cosA, -1 + eps, 1 - eps)
         A = torch.acos(cosA)
         # Angle between normals
         cosD = (n_2 * n_1).sum(-1)
-        cosD = torch.clamp(cosD, -1+eps, 1-eps)
+        cosD = torch.clamp(cosD, -1 + eps, 1 - eps)
         D = torch.sign((u_2 * n_1).sum(-1)) * torch.acos(cosD)
         # Backbone features
         AD_features = torch.stack((torch.cos(A), torch.sin(A) * torch.cos(D), torch.sin(A) * torch.sin(D)), 2)
-        AD_features = F.pad(AD_features, (0,0,1,2), 'constant', 0)
+        AD_features = F.pad(AD_features, (0, 0, 1, 2), 'constant', 0)
 
         # Build relative orientations
         o_1 = F.normalize(u_2 - u_1, dim=-1)
         O = torch.stack((o_1, n_2, torch.cross(o_1, n_2)), 2)
         O = O.view(list(O.shape[:2]) + [9])
-        O = F.pad(O, (0,0,1,2), 'constant', 0)
+        O = F.pad(O, (0, 0, 1, 2), 'constant', 0)
 
         # DEBUG: Viz [dense] pairwise orientations 
         # O = O.view(list(O.shape[:2]) + [3,3])
@@ -262,20 +260,20 @@ class ProteinFeatures(nn.Module):
 
         O_neighbors = gather_nodes(O, E_idx)
         X_neighbors = gather_nodes(X, E_idx)
-        
+
         # Re-view as rotation matrices
-        O = O.view(list(O.shape[:2]) + [3,3])
-        O_neighbors = O_neighbors.view(list(O_neighbors.shape[:3]) + [3,3])
+        O = O.view(list(O.shape[:2]) + [3, 3])
+        O_neighbors = O_neighbors.view(list(O_neighbors.shape[:3]) + [3, 3])
 
         # Rotate into local reference frames
         dX = X_neighbors - X.unsqueeze(-2)
         dU = torch.matmul(O.unsqueeze(2), dX.unsqueeze(-1)).squeeze(-1)
         dU = F.normalize(dU, dim=-1)
-        R = torch.matmul(O.unsqueeze(2).transpose(-1,-2), O_neighbors)
+        R = torch.matmul(O.unsqueeze(2).transpose(-1, -2), O_neighbors)
         Q = self._quaternions(R)
 
         # Orientation features
-        O_features = torch.cat((dU,Q), dim=-1)
+        O_features = torch.cat((dU, Q), dim=-1)
 
         # DEBUG: Viz pairwise orientations
         # IMG = Q[:,:,:,:3]
@@ -293,27 +291,27 @@ class ProteinFeatures(nn.Module):
 
     def _dihedrals(self, X, eps=1e-7):
         # First 3 coordinates are N, CA, C
-        X = X[:,:,:3,:].reshape(X.shape[0], 3*X.shape[1], 3)
+        X = X[:, :, :3, :].reshape(X.shape[0], 3 * X.shape[1], 3)
 
         # Shifted slices of unit vectors
-        dX = X[:,1:,:] - X[:,:-1,:]
+        dX = X[:, 1:, :] - X[:, :-1, :]
         U = F.normalize(dX, dim=-1)
-        u_2 = U[:,:-2,:]
-        u_1 = U[:,1:-1,:]
-        u_0 = U[:,2:,:]
+        u_2 = U[:, :-2, :]
+        u_1 = U[:, 1:-1, :]
+        u_0 = U[:, 2:, :]
         # Backbone normals
         n_2 = F.normalize(torch.cross(u_2, u_1), dim=-1)
         n_1 = F.normalize(torch.cross(u_1, u_0), dim=-1)
 
         # Angle between normals
         cosD = (n_2 * n_1).sum(-1)
-        cosD = torch.clamp(cosD, -1+eps, 1-eps)
+        cosD = torch.clamp(cosD, -1 + eps, 1 - eps)
         D = torch.sign((u_2 * n_1).sum(-1)) * torch.acos(cosD)
 
         # This scheme will remove phi[0], psi[-1], omega[-1]
-        D = F.pad(D, (1,2), 'constant', 0)
-        D = D.view((D.size(0), int(D.size(1)/3), 3))
-        phi, psi, omega = torch.unbind(D,-1)
+        D = F.pad(D, (1, 2), 'constant', 0)
+        D = D.view((D.size(0), int(D.size(1) / 3), 3))
+        phi, psi, omega = torch.unbind(D, -1)
 
         # print(cosD.cpu().data.numpy().flatten())
         # print(omega.sum().cpu().data.numpy().flatten())
@@ -344,7 +342,7 @@ class ProteinFeatures(nn.Module):
             X = X + self.augment_eps * torch.randn_like(X)
 
         # Build k-Nearest Neighbors graph
-        X_ca = X[:,:,1,:]
+        X_ca = X[:, :, 1, :]
         D_neighbors, E_idx, mask_neighbors = self._dist(X_ca, mask)
 
         # Pairwise features
@@ -367,8 +365,8 @@ class ProteinFeatures(nn.Module):
             neighbor_HB = self.dropout(neighbor_HB)
             # Pack
             V = mask.unsqueeze(-1) * torch.ones_like(AD_features)
-            neighbor_C = neighbor_C.expand(-1,-1,-1, int(self.num_positional_embeddings / 2))
-            neighbor_HB = neighbor_HB.expand(-1,-1,-1, int(self.num_positional_embeddings / 2))
+            neighbor_C = neighbor_C.expand(-1, -1, -1, int(self.num_positional_embeddings / 2))
+            neighbor_HB = neighbor_HB.expand(-1, -1, -1, int(self.num_positional_embeddings / 2))
             E = torch.cat((E_positional, neighbor_C, neighbor_HB), -1)
         elif self.features_type == 'full':
             # Full backbone angles

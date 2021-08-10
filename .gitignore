@@ -11,6 +11,8 @@
 *.json
 *.jsonl
 *.pt
+*.idea
+*.egg-info
 
 
 

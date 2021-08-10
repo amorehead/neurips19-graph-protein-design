@@ -1,11 +1,10 @@
 from __future__ import print_function
 
 import numpy as np
-from matplotlib import pyplot as plt
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 # The following gather functions
 def gather_edges(edges, neighbor_idx):
@@ -13,6 +12,7 @@ def gather_edges(edges, neighbor_idx):
     neighbors = neighbor_idx.unsqueeze(-1).expand(-1, -1, -1, edges.size(-1))
     edge_features = torch.gather(edges, 2, neighbors)
     return edge_features
+
 
 def gather_nodes(nodes, neighbor_idx):
     # Features [B,N,C] at Neighbor indices [B,N,K] => [B,N,K,C]
@@ -24,11 +24,13 @@ def gather_nodes(nodes, neighbor_idx):
     neighbor_features = neighbor_features.view(list(neighbor_idx.shape)[:3] + [-1])
     return neighbor_features
 
+
 def gather_nodes_t(nodes, neighbor_idx):
     # Features [B,N,C] at Neighbor index [B,K] => Neighbor features[B,K,C]
     idx_flat = neighbor_idx.unsqueeze(-1).expand(-1, -1, nodes.size(2))
     neighbor_features = torch.gather(nodes, 1, idx_flat)
     return neighbor_features
+
 
 def cat_neighbors_nodes(h_nodes, h_neighbors, E_idx):
     h_nodes = gather_nodes(h_nodes, E_idx)
@@ -87,7 +89,7 @@ class TransformerLayer(nn.Module):
     def step(self, t, h_V, h_E, mask_V=None, mask_attend=None):
         """ Sequential computation of step t of a transformer layer """
         # Self-attention
-        h_V_t = h_V[:,t,:]
+        h_V_t = h_V[:, t, :]
         dh_t = self.attention.step(t, h_V, h_E, mask_attend)
         h_V_t = self.norm[0](h_V_t + self.dropout(dh_t))
 
@@ -96,7 +98,7 @@ class TransformerLayer(nn.Module):
         h_V_t = self.norm[1](h_V_t + self.dropout(dh_t))
 
         if mask_V is not None:
-            mask_V_t = mask_V[:,t].unsqueeze(-1)
+            mask_V_t = mask_V[:, t].unsqueeze(-1)
             h_V_t = mask_V_t * h_V_t
         return h_V_t
 
@@ -120,7 +122,7 @@ class MPNNLayer(nn.Module):
         """ Parallel computation of full transformer layer """
 
         # Concatenate h_V_i to h_E_ij
-        h_V_expand = h_V.unsqueeze(-2).expand(-1,-1,h_E.size(-2),-1)
+        h_V_expand = h_V.unsqueeze(-2).expand(-1, -1, h_E.size(-2), -1)
         h_EV = torch.cat([h_V_expand, h_E], -1)
 
         h_message = self.W3(F.relu(self.W2(F.relu(self.W1(h_EV)))))
@@ -193,18 +195,18 @@ class NeighborAttention(nn.Module):
         V = self.W_V(h_E).view([n_batch, n_nodes, n_neighbors, n_heads, d])
 
         # Attention with scaled inner product
-        attend_logits = torch.matmul(Q, K).view([n_batch, n_nodes, n_neighbors, n_heads]).transpose(-2,-1)
+        attend_logits = torch.matmul(Q, K).view([n_batch, n_nodes, n_neighbors, n_heads]).transpose(-2, -1)
         attend_logits = attend_logits / np.sqrt(d)
-        
+
         if mask_attend is not None:
             # Masked softmax
-            mask = mask_attend.unsqueeze(2).expand(-1,-1,n_heads,-1)
+            mask = mask_attend.unsqueeze(2).expand(-1, -1, n_heads, -1)
             attend = self._masked_softmax(attend_logits, mask)
         else:
             attend = F.softmax(attend_logits, -1)
 
         # Attentive reduction
-        h_V_update = torch.matmul(attend.unsqueeze(-2), V.transpose(2,3))
+        h_V_update = torch.matmul(attend.unsqueeze(-2), V.transpose(2, 3))
         h_V_update = h_V_update.view([n_batch, n_nodes, self.num_hidden])
         h_V_update = self.W_O(h_V_update)
         return h_V_update
@@ -226,9 +228,9 @@ class NeighborAttention(nn.Module):
         d = self.num_hidden / n_heads
 
         # Per time-step tensors
-        h_V_t = h_V[:,t,:]
-        h_E_t = h_E[:,t,:,:]
-        E_idx_t = E_idx[:,t,:]
+        h_V_t = h_V[:, t, :]
+        h_E_t = h_E[:, t, :, :]
+        E_idx_t = E_idx[:, t, :]
 
         # Single time-step
         h_V_neighbors_t = gather_nodes_t(h_V, E_idx_t)
@@ -240,17 +242,17 @@ class NeighborAttention(nn.Module):
         V = self.W_V(E_t).view([n_batch, n_neighbors, n_heads, d])
 
         # Attention with scaled inner product
-        attend_logits = torch.matmul(Q, K).view([n_batch, n_neighbors, n_heads]).transpose(-2,-1)
+        attend_logits = torch.matmul(Q, K).view([n_batch, n_neighbors, n_heads]).transpose(-2, -1)
         attend_logits = attend_logits / np.sqrt(d)
 
         if mask_attend is not None:
             # Masked softmax
             # [N_batch, K] -=> [N_batch, N_heads, K]
-            mask_t = mask_attend[:,t,:].unsqueeze(1).expand(-1,n_heads,-1)
+            mask_t = mask_attend[:, t, :].unsqueeze(1).expand(-1, n_heads, -1)
             attend = self._masked_softmax(attend_logits, mask_t)
         else:
             attend = F.softmax(attend_logits / np.sqrt(d), -1)
 
         # Attentive reduction
-        h_V_t_update = torch.matmul(attend.unsqueeze(-2), V.transpose(1,2))
+        h_V_t_update = torch.matmul(attend.unsqueeze(-2), V.transpose(1, 2))
         return h_V_t_update

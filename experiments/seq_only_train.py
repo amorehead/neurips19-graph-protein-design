@@ -1,21 +1,24 @@
 from __future__ import print_function
-import json, time, os, sys
+
+import json
+import os
+import sys
+import time
 
 import numpy as np
 import torch
-from torch import optim
-from torch.utils.data import DataLoader
 from torch.utils.data.dataset import random_split, Subset
 
 # Library code
 sys.path.insert(0, '..')
 from struct2seq import *
 
-import matplotlib
 from matplotlib import pyplot as plt
+
 plt.switch_backend('agg')
 
 from argparse import ArgumentParser
+
 parser = ArgumentParser(description='Structure to sequence modeling')
 parser.add_argument('--hidden', type=int, default=256, help='number of hidden dimensions')
 parser.add_argument('--file_data', type=str, default='../data/cath/chain_set.jsonl', help='input chain file')
@@ -52,7 +55,7 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # Build the model
 MODEL = seq_model.LanguageRNN if args.rnn else seq_model.LanguageRNN
 model = MODEL(
-    num_letters=hyperparams['letters'], 
+    num_letters=hyperparams['letters'],
     hidden_dim=hyperparams['hidden']
 ).to(device)
 print('Number of parameters: {}'.format(sum([p.numel() for p in model.parameters()])))
@@ -68,21 +71,20 @@ criterion = torch.nn.NLLLoss(reduction='none')
 # Load the dataset
 dataset = data.StructureDataset(args.file_data, truncate=None, max_length=500)
 
-
 if args.split_random:
     # Split 
     print('Random split')
     split_frac = 0.1
     num_test = int(len(dataset) * split_frac)
     train_set, test_set = random_split(dataset, [len(dataset) - num_test, num_test])
-    train_set, validation_set = random_split(train_set, [len(train_set) - num_test,  num_test])
+    train_set, validation_set = random_split(train_set, [len(train_set) - num_test, num_test])
     loader_train, loader_validation, loader_test = [data.StructureLoader(
         d, batch_size=hyperparams['batch_size']
     ) for d in [train_set, validation_set, test_set]]
 else:
     # Split the dataset
     print('Structural split')
-    dataset_indices = {d['name']:i for i,d in enumerate(dataset)}
+    dataset_indices = {d['name']: i for i, d in enumerate(dataset)}
     with open(args.file_splits) as f:
         dataset_splits = json.load(f)
     train_set, validation_set, test_set = [
@@ -93,8 +95,7 @@ else:
         d, batch_size=hyperparams['batch_size']
     ) for d in [train_set, validation_set, test_set]]
 
-
-print('Training:{}, Validation:{}, Test:{}'.format(len(train_set),len(validation_set),len(test_set)))
+print('Training:{}, Validation:{}, Test:{}'.format(len(train_set), len(validation_set), len(test_set)))
 
 # Build basepath for experiment
 base_folder = time.strftime("log/%y%b%d_%I%M%p/", time.localtime())
@@ -111,24 +112,26 @@ with open(logfile, 'w') as f:
 with open(base_folder + 'hyperparams.json', 'w') as f:
     json.dump(hyperparams, f)
 
+
 def _plot_log_probs(log_probs, total_step):
     alphabet = 'ACDEFGHIKLMNPQRSTVWY'
     reorder = 'DEKRHQNSTPGAVILMCFWY'
     permute_ix = np.array([alphabet.index(c) for c in reorder])
     plt.close()
-    fig = plt.figure(figsize=(8,3))
+    fig = plt.figure(figsize=(8, 3))
     ax = fig.add_subplot(111)
     P = np.exp(log_probs.cpu().data.numpy())[0].T
     plt.imshow(P[permute_ix])
-    plt.clim(0,1)
+    plt.clim(0, 1)
     plt.colorbar()
     plt.yticks(np.arange(20), [a for a in reorder])
     ax.tick_params(
-        axis=u'both', which=u'both',length=0, labelsize=5
+        axis=u'both', which=u'both', length=0, labelsize=5
     )
     plt.tight_layout()
     plt.savefig(base_folder + 'probs{}.pdf'.format(total_step))
     return
+
 
 def _featurize(batch, hyperparams=hyperparams):
     """ Represent structure as an attributed graph """
@@ -145,10 +148,10 @@ def _featurize(batch, hyperparams=hyperparams):
         x_ca = b['coords']['CA']
         x_c = b['coords']['C']
         x = np.stack([x_n, x_ca, x_c], 1)
-        
+
         l = len(b['seq'])
-        x_pad = np.pad(x, [[0,L_max-l], [0,0], [0,0]], 'constant', constant_values=(np.nan, ))
-        X[i,:,:,:] = x_pad
+        x_pad = np.pad(x, [[0, L_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan,))
+        X[i, :, :, :] = x_pad
 
         # Convert to labels
         indices = np.asarray([alphabet.index(a) for a in b['seq']], dtype=np.int32)
@@ -156,23 +159,25 @@ def _featurize(batch, hyperparams=hyperparams):
 
     # Mask
     isnan = np.isnan(X)
-    mask = np.isfinite(np.sum(X,(2,3))).astype(np.float32)
+    mask = np.isfinite(np.sum(X, (2, 3))).astype(np.float32)
     X[isnan] = 0.
 
     # Conversion
-    S = torch.from_numpy(S).to(dtype=torch.long,device=device)
+    S = torch.from_numpy(S).to(dtype=torch.long, device=device)
     X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
     mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
     return X, S, mask, lengths
 
+
 def _loss(S, log_probs, mask):
     """ Negative log probabilities """
     loss = criterion(
-        log_probs.contiguous().view(-1,hyperparams['letters']),
+        log_probs.contiguous().view(-1, hyperparams['letters']),
         S.contiguous().view(-1)
     ).view(S.size())
     loss_av = torch.sum(loss * mask) / torch.sum(mask)
     return loss, loss_av
+
 
 start_train = time.time()
 total_step = 0
@@ -210,16 +215,18 @@ for e in range(args.epochs):
         # DEBUG UTILIZATION Stats
         if args.cuda:
             utilize_mask = 100. * mask.sum().cpu().data.numpy() / float(mask.numel())
-            utilize_gpu = float(torch.cuda.max_memory_allocated(device=device)) / 1024.**3
+            utilize_gpu = float(torch.cuda.max_memory_allocated(device=device)) / 1024. ** 3
             tps = mask.cpu().data.numpy().sum() / elapsed_batch
-            print('Tokens per second: {:.2f}, Mask efficiency: {:.2f}, GPU max allocated: {:.2f}'.format(tps, utilize_mask, utilize_gpu))
+            print('Tokens per second: {:.2f}, Mask efficiency: {:.2f}, GPU max allocated: {:.2f}'.format(tps,
+                                                                                                         utilize_mask,
+                                                                                                         utilize_gpu))
 
         if total_step % 5000 == 0:
             torch.save({
                 'epoch': e,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.optimizer.state_dict()
-            }, base_folder + 'checkpoints/epoch{}_step{}.pt'.format(e+1, total_step))
+            }, base_folder + 'checkpoints/epoch{}_step{}.pt'.format(e + 1, total_step))
 
     # Test image
     _plot_log_probs(log_probs, total_step)
@@ -251,4 +258,4 @@ for e in range(args.epochs):
         'epoch': e,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.optimizer.state_dict()
-    }, base_folder + 'checkpoints/epoch{}_step{}.pt'.format(e+1, total_step))
+    }, base_folder + 'checkpoints/epoch{}_step{}.pt'.format(e + 1, total_step))

@@ -1,21 +1,17 @@
 from __future__ import print_function
-import json, time, os, sys
+
 import copy
+import sys
+import time
 
-import numpy as np
-import torch
-from torch import optim
-from torch.utils.data import DataLoader
 import pandas as pd
-
-import matplotlib
+import torch
 from matplotlib import pyplot as plt
 
 # Library code
 sys.path.insert(0, '..')
 from struct2seq import *
-from torch.utils.data.dataset import random_split
-from utils import setup_cli_model, load_checkpoint, featurize
+from utils import setup_cli_model, featurize
 
 # SIMULATE
 sys.argv = [sys.argv[0], '--features', 'full', '--restore', 'log/h128_full/epoch90_step61740.pt']
@@ -31,14 +27,17 @@ dataset_path = '../data/rocklin/output/rocklin_mutations.jsonl'
 dataset = data.StructureDataset(dataset_path, truncate=None, max_length=500)
 
 criterion = torch.nn.NLLLoss(reduction='none')
+
+
 def _loss(S, log_probs, mask, num_letters=20):
     """ Negative log probabilities """
     loss = criterion(
-        log_probs.contiguous().view(-1,num_letters),
+        log_probs.contiguous().view(-1, num_letters),
         S.contiguous().view(-1)
     ).view(S.size())
     loss_av = torch.sum(loss * mask) / torch.sum(mask)
     return loss, loss_av
+
 
 start_test = time.time()
 total_step = 0
@@ -105,15 +104,13 @@ with torch.no_grad():
         # neglogp = neglogp.cpu().data.numpy().tolist()
         # print(fold['name'], neglogp)
 
-
-
         # # Collect per protein log-probabilities
         # data_dict = {
         #     key: [entry[key] for entry in batch]
         #     for key in ['name', 'stabilityscore', 'total_score', 'total_score_talaris']
         # }
         # batch_df = pd.DataFrame(data=data_dict)
-        
+
         # batch_df['neglogp'] = pd.Series(neglogp)
         # rocklin_df = rocklin_df.append(batch_df, ignore_index=True, sort=False)
 
@@ -138,7 +135,6 @@ with torch.no_grad():
         #     tps = mask.cpu().data.numpy().sum() / elapsed_batch
         #     print('Tokens per second: {:.2f}, Mask efficiency: {:.2f}, GPU max allocated: {:.2f}'.format(tps, utilize_mask, utilize_gpu))
 
-
 # rocklin_df.to_csv('rocklin/rocklin_results.tsv', sep='\t')
 # # Designs
 # designs = ['HHH', 'EHEE', 'HEEH', 'EEHEE']
@@ -155,5 +151,3 @@ with torch.no_grad():
 #     plt.xlabel('Transformer neglogp')
 #     plt.ylabel('Stability score')
 #     plt.savefig('rocklin/' + design + '_model.pdf')
-
-        

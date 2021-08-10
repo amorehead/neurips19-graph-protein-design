@@ -1,16 +1,10 @@
 from __future__ import print_function
-import json, time, os, sys, glob
-import shutil
 
-import numpy as np
-import torch
-from torch import optim
-from torch.utils.data import DataLoader
-from torch.utils.data.dataset import random_split, Subset
+import shutil
+import sys
 
 # Library code
 sys.path.insert(0, '..')
-from struct2seq import *
 from utils import *
 
 args, device, model = setup_cli_model()
@@ -21,12 +15,12 @@ criterion = torch.nn.NLLLoss(reduction='none')
 dataset = data.StructureDataset(args.file_data, truncate=None, max_length=500)
 
 # Split the dataset
-dataset_indices = {d['name']:i for i,d in enumerate(dataset)}
+dataset_indices = {d['name']: i for i, d in enumerate(dataset)}
 with open(args.file_splits) as f:
     dataset_splits = json.load(f)
 train_set, validation_set, test_set = [
     Subset(dataset, [
-        dataset_indices[chain_name] for chain_name in dataset_splits[key] 
+        dataset_indices[chain_name] for chain_name in dataset_splits[key]
         if chain_name in dataset_indices
     ])
     for key in ['train', 'validation', 'test']
@@ -34,7 +28,7 @@ train_set, validation_set, test_set = [
 loader_train, loader_validation, loader_test = [data.StructureLoader(
     d, batch_size=args.batch_tokens
 ) for d in [train_set, validation_set, test_set]]
-print('Training:{}, Validation:{}, Test:{}'.format(len(train_set),len(validation_set),len(test_set)))
+print('Training:{}, Validation:{}, Test:{}'.format(len(train_set), len(validation_set), len(test_set)))
 
 # Build basepath for experiment
 if args.name != '':
@@ -86,7 +80,8 @@ for e in range(args.epochs):
         elapsed_batch = time.time() - start_batch
         elapsed_train = time.time() - start_train
         total_step += 1
-        print(total_step, elapsed_train, np.exp(loss_av.cpu().data.numpy()), np.exp(loss_av_smoothed.cpu().data.numpy()))
+        print(total_step, elapsed_train, np.exp(loss_av.cpu().data.numpy()),
+              np.exp(loss_av_smoothed.cpu().data.numpy()))
 
         if False:
             # Test reproducibility
@@ -103,17 +98,19 @@ for e in range(args.epochs):
         # DEBUG UTILIZATION Stats
         if args.cuda:
             utilize_mask = 100. * mask.sum().cpu().data.numpy() / float(mask.numel())
-            utilize_gpu = float(torch.cuda.max_memory_allocated(device=device)) / 1024.**3
+            utilize_gpu = float(torch.cuda.max_memory_allocated(device=device)) / 1024. ** 3
             tps_train = mask.cpu().data.numpy().sum() / elapsed_batch
             tps_features = mask.cpu().data.numpy().sum() / elapsed_featurize
-            print('Tokens/s (train): {:.2f}, Tokens/s (features): {:.2f}, Mask efficiency: {:.2f}, GPU max allocated: {:.2f}'.format(tps_train, tps_features, utilize_mask, utilize_gpu))
+            print(
+                'Tokens/s (train): {:.2f}, Tokens/s (features): {:.2f}, Mask efficiency: {:.2f}, GPU max allocated: {:.2f}'.format(
+                    tps_train, tps_features, utilize_mask, utilize_gpu))
 
         if total_step % 5000 == 0:
             torch.save({
                 'epoch': e,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.optimizer.state_dict()
-            }, base_folder + 'checkpoints/epoch{}_step{}.pt'.format(e+1, total_step))
+            }, base_folder + 'checkpoints/epoch{}_step{}.pt'.format(e + 1, total_step))
 
     # Train image
     plot_log_probs(log_probs, total_step, folder='{}plots/train_{}_'.format(base_folder, batch[0]['name']))
@@ -144,7 +141,7 @@ for e in range(args.epochs):
         f.write('{}\t{}\t{}\n'.format(e, train_perplexity, validation_perplexity))
 
     # Save the model
-    checkpoint_filename = base_folder + 'checkpoints/epoch{}_step{}.pt'.format(e+1, total_step)
+    checkpoint_filename = base_folder + 'checkpoints/epoch{}_step{}.pt'.format(e + 1, total_step)
     torch.save({
         'epoch': e,
         'hyperparams': vars(args),
@@ -165,7 +162,6 @@ best_checkpoint_copy = base_folder + 'best_checkpoint_epoch{}.pt'.format(best_mo
 shutil.copy(best_checkpoint, best_checkpoint_copy)
 load_checkpoint(best_checkpoint_copy, model)
 
-
 # Test epoch
 model.eval()
 with torch.no_grad():
@@ -184,6 +180,5 @@ print('Perplexity\tTest:{}'.format(test_perplexity))
 
 with open(base_folder + 'results.txt', 'w') as f:
     f.write('Best epoch: {}\nPerplexities:\n\tTrain: {}\n\tValidation: {}\n\tTest: {}'.format(
-        best_model_idx+1, train_perplexity, validation_perplexity, test_perplexity
+        best_model_idx + 1, train_perplexity, validation_perplexity, test_perplexity
     ))
-

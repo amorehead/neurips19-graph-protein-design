@@ -1,7 +1,7 @@
 import glob
-import pandas as pd
 
 import numpy as np
+import pandas as pd
 import scipy.stats
 
 results_files = glob.glob('*.tsv')
@@ -11,10 +11,9 @@ print(results_files)
 for suffix in ['_full', '_hbonds']:
     for file in sorted(glob.glob('*' + suffix + '.tsv')):
         df = pd.read_csv(file, sep='\t')
-        pearson = np.corrcoef(df['stabilityscore'], df['neglogp'])[0,1]
+        pearson = np.corrcoef(df['stabilityscore'], df['neglogp'])[0, 1]
         spearman = scipy.stats.spearmanr(df['stabilityscore'], df['neglogp'])[0]
         print('{}\t{}\t{}'.format(file, spearman, pearson))
-
 
     # print(df.corr()[2,1])
     # print(df)

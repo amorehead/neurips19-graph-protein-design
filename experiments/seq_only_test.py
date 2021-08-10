@@ -1,24 +1,24 @@
 from __future__ import print_function
-import json, time, os, sys, glob
+
+import json
+import sys
 
 import numpy as np
 import torch
-from torch import optim
-from torch.utils.data import DataLoader
-from torch.utils.data.dataset import random_split, Subset
+from torch.utils.data.dataset import Subset
 
 # Library code
 sys.path.insert(0, '..')
 from struct2seq import *
 
-import matplotlib
 from matplotlib import pyplot as plt
-plt.switch_backend('agg')
 
+plt.switch_backend('agg')
 
 # sys.argv = [sys.argv[0], '--rnn', '--restore', 'log/19Mar14_1216AM_RNN_128/checkpoints/epoch18_step3798.pt', '--hidden', '128']
 
 from argparse import ArgumentParser
+
 parser = ArgumentParser(description='Structure to sequence modeling')
 parser.add_argument('--hidden', type=int, default=256, help='number of hidden dimensions')
 parser.add_argument('--file_data', type=str, default='../data/cath/chain_set.jsonl', help='input chain file')
@@ -46,7 +46,7 @@ if torch.cuda.is_available():
 # Hyperparameters
 hyperparams = {
     'batch_size': args.batch_tokens,
-    'hidden':  args.hidden,
+    'hidden': args.hidden,
     'letters': 20
 }
 
@@ -55,7 +55,7 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # Build the model
 MODEL = seq_model.LanguageRNN if args.rnn else seq_model.SequenceModel
 model = MODEL(
-    num_letters=20, 
+    num_letters=20,
     hidden_dim=args.hidden
 ).to(device)
 print('Number of parameters: {}'.format(sum([p.numel() for p in model.parameters()])))
@@ -75,31 +75,33 @@ print(test_names)
 dataset = data.StructureDataset(args.file_data, truncate=None, max_length=500)
 
 # Split the dataset
-dataset_indices = {d['name']:i for i,d in enumerate(dataset)}
+dataset_indices = {d['name']: i for i, d in enumerate(dataset)}
 test_indices = [dataset_indices[name] for name in test_names]
 test_set = Subset(dataset, test_indices)
 loader_test = data.StructureLoader(test_set, batch_size=args.batch_tokens)
 
 print('Testing {} domains'.format(len(test_set)))
 
+
 def _plot_log_probs(log_probs, total_step):
     alphabet = 'ACDEFGHIKLMNPQRSTVWY'
     reorder = 'DEKRHQNSTPGAVILMCFWY'
     permute_ix = np.array([alphabet.index(c) for c in reorder])
     plt.close()
-    fig = plt.figure(figsize=(8,3))
+    fig = plt.figure(figsize=(8, 3))
     ax = fig.add_subplot(111)
     P = np.exp(log_probs.cpu().data.numpy())[0].T
     plt.imshow(P[permute_ix])
-    plt.clim(0,1)
+    plt.clim(0, 1)
     plt.colorbar()
     plt.yticks(np.arange(20), [a for a in reorder])
     ax.tick_params(
-        axis=u'both', which=u'both',length=0, labelsize=5
+        axis=u'both', which=u'both', length=0, labelsize=5
     )
     plt.tight_layout()
     plt.savefig(base_folder + 'probs{}.pdf'.format(total_step))
     return
+
 
 def _featurize(batch, hyperparams=hyperparams):
     """ Represent structure as an attributed graph """
@@ -116,10 +118,10 @@ def _featurize(batch, hyperparams=hyperparams):
         x_ca = b['coords']['CA']
         x_c = b['coords']['C']
         x = np.stack([x_n, x_ca, x_c], 1)
-        
+
         l = len(b['seq'])
-        x_pad = np.pad(x, [[0,L_max-l], [0,0], [0,0]], 'constant', constant_values=(np.nan, ))
-        X[i,:,:,:] = x_pad
+        x_pad = np.pad(x, [[0, L_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan,))
+        X[i, :, :, :] = x_pad
 
         # Convert to labels
         indices = np.asarray([alphabet.index(a) for a in b['seq']], dtype=np.int32)
@@ -127,23 +129,25 @@ def _featurize(batch, hyperparams=hyperparams):
 
     # Mask
     isnan = np.isnan(X)
-    mask = np.isfinite(np.sum(X,(2,3))).astype(np.float32)
+    mask = np.isfinite(np.sum(X, (2, 3))).astype(np.float32)
     X[isnan] = 0.
 
     # Conversion
-    S = torch.from_numpy(S).to(dtype=torch.long,device=device)
+    S = torch.from_numpy(S).to(dtype=torch.long, device=device)
     X = torch.from_numpy(X).to(dtype=torch.float32, device=device)
     mask = torch.from_numpy(mask).to(dtype=torch.float32, device=device)
     return X, S, mask, lengths
 
+
 def _loss(S, log_probs, mask):
     """ Negative log probabilities """
     loss = criterion(
-        log_probs.contiguous().view(-1,hyperparams['letters']),
+        log_probs.contiguous().view(-1, hyperparams['letters']),
         S.contiguous().view(-1)
     ).view(S.size())
     loss_av = torch.sum(loss * mask) / torch.sum(mask)
     return loss, loss_av
+
 
 total_step = 0
 # Validation epoch
@@ -155,7 +159,7 @@ with torch.no_grad():
         log_probs = model(S, lengths, mask)
         loss, loss_av = _loss(S, log_probs, mask)
 
-        print(ix, len(batch),[b['name'] for b in batch], len(test_set))
+        print(ix, len(batch), [b['name'] for b in batch], len(test_set))
 
         # Accumulate
         test_sum += torch.sum(loss * mask).cpu().data.numpy()

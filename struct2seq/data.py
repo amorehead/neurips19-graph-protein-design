@@ -1,12 +1,14 @@
 from __future__ import print_function
-from torch.utils.data import Dataset
+
+import json
+import time
+
 import numpy as np
-import json, time, copy
-import random
+
 
 class StructureDataset():
     def __init__(self, jsonl_file, verbose=True, truncate=None, max_length=100,
-        alphabet='ACDEFGHIKLMNPQRSTVWY'):
+                 alphabet='ACDEFGHIKLMNPQRSTVWY'):
         alphabet_set = set([a for a in alphabet])
         discard_count = {
             'bad_chars': 0,
@@ -44,9 +46,10 @@ class StructureDataset():
 
                 if verbose and (i + 1) % 1000 == 0:
                     elapsed = time.time() - start
-                    print('{} entries ({} loaded) in {:.1f} s'.format(len(self.data), i+1, elapsed))
+                    print('{} entries ({} loaded) in {:.1f} s'.format(len(self.data), i + 1, elapsed))
 
             print('Discarded', discard_count)
+
     def __len__(self):
         return len(self.data)
 
@@ -56,7 +59,7 @@ class StructureDataset():
 
 class SequenceDataset():
     def __init__(self, jsonl_file, verbose=True, truncate=None, max_length=100,
-        alphabet='ACDEFGHIKLMNPQRSTVWY'):
+                 alphabet='ACDEFGHIKLMNPQRSTVWY'):
         alphabet_set = set([a for a in alphabet])
         discard_count = {
             'bad_chars': 0,
@@ -87,9 +90,10 @@ class SequenceDataset():
 
                 if verbose and (i + 1) % 100000 == 0:
                     elapsed = time.time() - start
-                    print('{} entries ({} loaded) in {:.1f} s'.format(len(self.data), i+1, elapsed))
+                    print('{} entries ({} loaded) in {:.1f} s'.format(len(self.data), i + 1, elapsed))
 
             print('Discarded', discard_count)
+
     def __len__(self):
         return len(self.data)
 
@@ -99,7 +103,7 @@ class SequenceDataset():
 
 class StructureLoader():
     def __init__(self, dataset, batch_size=100, shuffle=True,
-        collate_fn=lambda x:x, drop_last=False):
+                 collate_fn=lambda x: x, drop_last=False):
         self.dataset = dataset
         self.size = len(dataset)
         self.lengths = [len(dataset[i]['seq']) for i in range(self.size)]
@@ -129,4 +133,3 @@ class StructureLoader():
         for b_idx in self.clusters:
             batch = [self.dataset[i] for i in b_idx]
             yield batch
-        
