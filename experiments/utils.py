@@ -124,8 +124,7 @@ def featurize(batch, device, shuffle_fraction=0.):
 
     # Build the batch
     for i, b in enumerate(batch):
-        inter = [b['coords'][c] for c in ['N', 'CA', 'C', 'O']]
-        x = np.stack(inter, 1)
+        x = np.stack([b['coords'][c] for c in ['N', 'CA', 'C', 'O']], 1)
 
         l = len(b['seq'])
         x_pad = np.pad(x, [[0, L_max - l], [0, 0], [0, 0]], 'constant', constant_values=(np.nan,))
